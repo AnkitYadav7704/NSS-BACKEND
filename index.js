@@ -83,6 +83,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Root dummy route for quick server check
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'NSS Backend server is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/mmmut_nss_blood_camp')
   .then(() => {
