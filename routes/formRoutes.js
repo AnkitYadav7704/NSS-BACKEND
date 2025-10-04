@@ -28,7 +28,7 @@ router.get('/', authenticate, async (req, res) => {
 // Get single form
 router.get('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const form = await Form.findById(req.params.id)
+    const form = await Form.findOne({ _id: req.params.id, isActive: true })
       .populate('createdBy', 'name');
 
     if (!form) {
@@ -79,8 +79,8 @@ router.post('/', authenticate, authorize('admin'), async (req, res) => {
 // Update form (Admin only)
 router.put('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const form = await Form.findByIdAndUpdate(
-      req.params.id,
+    const form = await Form.findOneAndUpdate(
+      { _id: req.params.id, isActive: true },
       req.body,
       { new: true, runValidators: true }
     ).populate('createdBy', 'name');
@@ -109,8 +109,8 @@ router.put('/:id', authenticate, authorize('admin'), async (req, res) => {
 // Delete form (Admin only)
 router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const form = await Form.findByIdAndUpdate(
-      req.params.id,
+    const form = await Form.findOneAndUpdate(
+      { _id: req.params.id, isActive: true },
       { isActive: false },
       { new: true }
     );

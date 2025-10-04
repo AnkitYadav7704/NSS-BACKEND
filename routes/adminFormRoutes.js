@@ -12,13 +12,13 @@ router.get('/', authenticate, authorize('admin'), async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const forms = await Form.find()
+    const forms = await Form.find({ isActive: true })
       .populate('createdBy', 'name')
       .sort({ eventDate: 1 })
       .skip(skip)
       .limit(limit);
 
-    const total = await Form.countDocuments();
+    const total = await Form.countDocuments({ isActive: true });
 
     res.json({
       success: true,
@@ -42,7 +42,7 @@ router.get('/', authenticate, authorize('admin'), async (req, res) => {
 // Get single form
 router.get('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const form = await Form.findById(req.params.id)
+    const form = await Form.findOne({ _id: req.params.id, isActive: true })
       .populate('createdBy', 'name');
 
     if (!form) {
@@ -155,8 +155,8 @@ router.put('/:id', authenticate, authorize('admin'), upload.array('files', 5), a
       }));
     }
 
-    const form = await Form.findByIdAndUpdate(
-      req.params.id,
+    const form = await Form.findOneAndUpdate(
+      { _id: req.params.id, isActive: true },
       updateData,
       { new: true, runValidators: true }
     ).populate('createdBy', 'name');
@@ -185,8 +185,8 @@ router.put('/:id', authenticate, authorize('admin'), upload.array('files', 5), a
 // Delete form
 router.delete('/:id', authenticate, authorize('admin'), async (req, res) => {
   try {
-    const form = await Form.findByIdAndUpdate(
-      req.params.id,
+    const form = await Form.findOneAndUpdate(
+      { _id: req.params.id, isActive: true },
       { isActive: false },
       { new: true }
     );
