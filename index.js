@@ -6,6 +6,8 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Import routes
 import userRoutes from './routes/userRoutes.js';
@@ -24,10 +26,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Rate limiting configuration
+// Resolve __dirname in ES module context
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Rate limiting configuration with safe parsing
+const WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+const MAX_REQ = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100;
 const limiter = rateLimit({
-  windowMs: process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000, // 15 minutes default
-  max: process.env.RATE_LIMIT_MAX_REQUESTS || 100, // limit each IP to 100 requests per windowMs
+  windowMs: WINDOW_MS,
+  max: MAX_REQ,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -52,6 +60,8 @@ const corsOptions = {
     const allowedOrigins = [
       process.env.FRONTEND_URL,
       'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',  // Added port 5175
       'http://localhost:3000',
       'https://localhost:5173',
       'https://nss-blood-donation-camp.vercel.app'
@@ -70,7 +80,16 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(limiter);
-app.use(morgan('combined'));
+// Add a simple request id for tracing (not cryptographically unique)
+let reqCounter = 0;
+app.use((req, _res, next) => {
+  req.id = `${Date.now().toString(36)}-${(++reqCounter).toString(36)}`;
+  next();
+});
+
+// Custom morgan token for request id
+morgan.token('id', (req) => req.id);
+app.use(morgan(':id :method :url :status :res[content-length] - :response-time ms'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -141,6 +160,7 @@ async function initializeDatabase() {
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admins', adminRoutes); // Alias for SuperAdminDashboard compatibility
 app.use('/api/admin-requests', adminRequestRoutes);
 app.use('/api/donors', donorRoutes);
 app.use('/api/notices', noticeRoutes);
@@ -149,21 +169,13 @@ app.use('/api/admin/notices', adminNoticeRoutes);
 app.use('/api/admin/forms', adminFormRoutes);
 app.use('/api/admin/donors', adminDonorRoutes);
 
-// Serve uploaded files
-app.use('/uploads', express.static('server/uploads'));
+// Serve uploaded files (correct relative path)
+const uploadsPath = path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadsPath));
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error(error);
-  res.status(error.status || 500).json({
-    success: false,
-    message: error.message || 'Internal server error'
-  });
 });
 
 // 404 handler
@@ -171,6 +183,21 @@ app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found'
+  });
+});
+
+// Central error handler MUST be last
+// eslint-disable-next-line no-unused-vars
+app.use((error, req, res, _next) => {
+  const status = error.status || 500;
+  const isProd = process.env.NODE_ENV === 'production';
+  if (status >= 500) {
+    console.error('Error Handler -> reqId', req.id, error);
+  }
+  res.status(status).json({
+    success: false,
+    message: error.message || 'Internal server error',
+    ...(isProd ? {} : { stack: error.stack, reqId: req.id })
   });
 });
 
